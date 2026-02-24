@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Background circle -->
+    <path
+        android:fillColor="#1976D2"
+        android:pathData="M24,24m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0"/>
+    <!-- Scale icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,12
+        L24,18
+        M14,24 L34,24
+        M14,24 L11,32 L17,32 L14,24
+        M34,24 L31,32 L37,32 L34,24
+        M24,18 L14,24
+        M24,18 L34,24
+        M24,10 C25.1,10 26,10.9 26,12 C26,13.1 25.1,14 24,14 C22.9,14 22,13.1 22,12 C22,10.9 22.9,10 24,10"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF"/>
+</vector>
+

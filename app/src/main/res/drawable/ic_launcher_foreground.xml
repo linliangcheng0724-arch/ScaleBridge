@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Scale icon - a simple balance scale representation -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30
+        L54,45
+        M34,55 L74,55
+        M34,55 L29,70 L39,70 L34,55
+        M74,55 L69,70 L79,70 L74,55
+        M54,45 L34,55
+        M54,45 L74,55
+        M54,25 C56.21,25 58,26.79 58,29 C58,31.21 56.21,33 54,33 C51.79,33 50,31.21 50,29 C50,26.79 51.79,25 54,25" />
+</vector>
+
