@@ -25,21 +25,11 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Generate Keystore
+    - name: Decode Keystore
       env:
-        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       run: |
-        keytool -genkey -v \
-          -keystore app/scalebridge.keystore \
-          -alias "$KEY_ALIAS" \
-          -keyalg RSA \
-          -keysize 2048 \
-          -validity 10000 \
-          -storepass "$KEYSTORE_PASSWORD" \
-          -keypass "$KEY_PASSWORD" \
-          -dname "CN=ScaleBridge, OU=Dev, O=Company, L=City, ST=State, C=TW"
+        echo "$KEYSTORE_BASE64" | base64 -d > app/scalebridge.keystore
 
     - name: Create keystore.properties
       env:
