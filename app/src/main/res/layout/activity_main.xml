@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="#F5F5F5">
+
+    <!-- 標題 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="⚖️ ScaleBridge"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="#333333"
+        android:gravity="center"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="USB 電子秤橋接服務"
+        android:textSize="14sp"
+        android:textColor="#666666"
+        android:gravity="center"
+        android:layout_marginBottom="24dp" />
+
+    <!-- 狀態卡片 -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="4dp"
+        xmlns:app="http://schemas.android.com/apk/res-auto">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="狀態: 檢查中..."
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/tvIpAddress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="IP 地址: 檢查中..."
+                android:textSize="14sp"
+                android:textColor="#555555"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/tvApiUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="API URL: 檢查中..."
+                android:textSize="14sp"
+                android:textColor="#555555"
+                android:textIsSelectable="true" />
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- 最新重量卡片 -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="4dp"
+        xmlns:app="http://schemas.android.com/apk/res-auto">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📊 測試結果"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#333333"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/tvLastWeight"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="尚未測試"
+                android:textSize="24sp"
+                android:textColor="#666666"
+                android:gravity="center" />
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- 測試按鈕 -->
+    <Button
+        android:id="@+id/btnTestRead"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="🔄 測試讀取重量"
+        android:textSize="16sp"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#4CAF50"
+        android:layout_marginBottom="16dp" />
+
+    <!-- 服務控制按鈕 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnStartService"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="▶ 啟動服務"
+            android:textSize="14sp"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#2196F3"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/btnStopService"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="⏹ 停止服務"
+            android:textSize="14sp"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#F44336"
+            android:layout_marginStart="8dp" />
+
+    </LinearLayout>
+
+    <!-- 底部說明 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="💡 使用說明:\n1. 確保手機連接 WiFi\n2. 連接 USB 電子秤\n3. 在 Odoo POS 設定填入上方 API URL\n4. 在 POS 按「讀重量」按鈕即可"
+        android:textSize="12sp"
+        android:textColor="#888888"
+        android:lineSpacingExtra="4dp" />
+
+</LinearLayout>
+

@@ -12,6 +12,7 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.util.concurrent.CountDownLatch
@@ -21,16 +22,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * UsbService
  * 前台服務，負責：
- * 1. 維持前台狀態，防止 Android 11 背景限制
- * 2. 處理 USB 權限請求
- * 3. 執行重量讀取
- * 4. 回傳結果 Broadcast
- * 
- * 執行緒設計：
- * - 使用單次背景執行緒處理每個請求
- * - read timeout 1000ms
- * - synchronized 保護共享資料
- * - finally 確保 close port
+ * 1. 維持前台狀態，防止被系統殺掉
+ * 2. 運行 HTTP Server 供 POS 查詢重量
+ * 3. 處理 USB 權限請求
  */
 class UsbService : Service() {
 
@@ -38,15 +32,14 @@ class UsbService : Service() {
     private lateinit var usbManager: UsbManager
     private var usbPermissionReceiver: UsbPermissionReceiver? = null
 
+    // HTTP Server for POS integration
+    private var httpServer: ScaleHttpServer? = null
+
+    // WakeLock 防止 CPU 休眠
+    private var wakeLock: PowerManager.WakeLock? = null
+
     // 標記 Service 是否已經啟動前台
     private val isForegroundStarted = AtomicBoolean(false)
-
-    // 用於等待權限結果
-    @Volatile
-    private var permissionLatch: CountDownLatch? = null
-
-    @Volatile
-    private var permissionGranted: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -62,7 +55,78 @@ class UsbService : Service() {
         // 註冊 USB 權限 Receiver
         registerUsbPermissionReceiver()
 
+        // 啟動 HTTP Server（供 POS 查詢重量）
+        startHttpServer()
+
+        // 獲取 WakeLock 防止 CPU 休眠
+        acquireWakeLock()
+
         Log.i(Constants.TAG, "UsbService 初始化完成")
+    }
+
+    /**
+     * 獲取 WakeLock 防止 CPU 休眠
+     */
+    private fun acquireWakeLock() {
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "ScaleBridge::ServiceWakeLock"
+            ).apply {
+                setReferenceCounted(false)
+                acquire(24 * 60 * 60 * 1000L) // 24 小時
+            }
+            Log.i(Constants.TAG, "WakeLock 已獲取")
+        } catch (e: Exception) {
+            Log.e(Constants.TAG, "獲取 WakeLock 失敗", e)
+        }
+    }
+
+    /**
+     * 釋放 WakeLock
+     */
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.i(Constants.TAG, "WakeLock 已釋放")
+                }
+            }
+            wakeLock = null
+        } catch (e: Exception) {
+            Log.e(Constants.TAG, "釋放 WakeLock 時發生異常", e)
+        }
+    }
+
+    /**
+     * 啟動 HTTP Server
+     */
+    private fun startHttpServer() {
+        try {
+            httpServer = ScaleHttpServer(
+                port = Constants.HTTP_SERVER_PORT,
+                weightRepository = weightRepository
+            )
+            httpServer?.startServer()
+            Log.i(Constants.TAG, "HTTP Server 已啟動，port=${Constants.HTTP_SERVER_PORT}")
+        } catch (e: Exception) {
+            Log.e(Constants.TAG, "啟動 HTTP Server 失敗", e)
+        }
+    }
+
+    /**
+     * 停止 HTTP Server
+     */
+    private fun stopHttpServer() {
+        try {
+            httpServer?.stopServer()
+            httpServer = null
+            Log.i(Constants.TAG, "HTTP Server 已停止")
+        } catch (e: Exception) {
+            Log.e(Constants.TAG, "停止 HTTP Server 時發生異常", e)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -72,12 +136,8 @@ class UsbService : Service() {
         ensureForegroundStarted()
 
         when (intent?.action) {
-            Constants.ACTION_GET_WEIGHT -> {
-                Log.i(Constants.TAG, "處理 GET_WEIGHT 請求")
-                handleGetWeightRequest()
-            }
             Constants.ACTION_START_SERVICE -> {
-                Log.i(Constants.TAG, "Service 啟動完成（開機自啟或手動啟動）")
+                Log.i(Constants.TAG, "Service 啟動完成")
             }
             else -> {
                 Log.d(Constants.TAG, "收到其他 action 或 null action")
@@ -89,12 +149,17 @@ class UsbService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? {
-        // 這是一個 started service，不需要 binding
         return null
     }
 
     override fun onDestroy() {
         Log.i(Constants.TAG, "UsbService.onDestroy")
+
+        // 釋放 WakeLock
+        releaseWakeLock()
+
+        // 停止 HTTP Server
+        stopHttpServer()
 
         // 取消註冊 Receiver
         unregisterUsbPermissionReceiver()
@@ -106,6 +171,20 @@ class UsbService : Service() {
     }
 
     /**
+     * 當服務被系統殺掉時，嘗試重啟
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.w(Constants.TAG, "onTaskRemoved - 嘗試重啟服務")
+        
+        val restartIntent = Intent(this, BootReceiver::class.java).apply {
+            action = "com.example.scalebridge.RESTART_SERVICE"
+        }
+        sendBroadcast(restartIntent)
+        
+        super.onTaskRemoved(rootIntent)
+    }
+
+    /**
      * 創建 Notification Channel（Android 8+ 必需）
      */
     private fun createNotificationChannel() {
@@ -113,7 +192,7 @@ class UsbService : Service() {
             val channel = NotificationChannel(
                 Constants.NOTIFICATION_CHANNEL_ID,
                 Constants.NOTIFICATION_CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_LOW // 低重要性，不會發出聲音
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "ScaleBridge USB 秤橋接服務"
                 setShowBadge(false)
@@ -129,13 +208,53 @@ class UsbService : Service() {
      * 創建前台服務 Notification
      */
     private fun createNotification(): Notification {
+        val ipAddress = getLocalIpAddress() ?: "未連接 WiFi"
+        val apiUrl = if (ipAddress != "未連接 WiFi") {
+            "http://$ipAddress:${Constants.HTTP_SERVER_PORT}/weight"
+        } else {
+            "請先連接 WiFi"
+        }
+
+        // 點擊通知時打開 MainActivity
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
         return NotificationCompat.Builder(this, Constants.NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("ScaleBridge")
-            .setContentText("USB 電子秤橋接服務運行中")
-            .setSmallIcon(android.R.drawable.ic_menu_compass) // 使用系統圖標
+            .setContentTitle("⚖️ ScaleBridge 運行中")
+            .setContentText("API: $apiUrl")
+            .setStyle(NotificationCompat.BigTextStyle()
+                .bigText("HTTP API 已啟動\n\nPOS 設定網址:\n$apiUrl"))
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
+            .setContentIntent(pendingIntent)
             .build()
+    }
+
+    /**
+     * 取得本機 IP 地址
+     */
+    private fun getLocalIpAddress(): String? {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val intf = interfaces.nextElement()
+                val addrs = intf.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        return addr.hostAddress
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(Constants.TAG, "取得 IP 地址失敗", e)
+        }
+        return null
     }
 
     /**
@@ -186,129 +305,4 @@ class UsbService : Service() {
             usbPermissionReceiver = null
         }
     }
-
-    /**
-     * 處理 GET_WEIGHT 請求
-     * 在背景執行緒中執行，避免阻塞主執行緒
-     */
-    private fun handleGetWeightRequest() {
-        // 使用單次背景執行緒
-        Thread {
-            try {
-                Log.i(Constants.TAG, "開始處理重量讀取請求（背景執行緒）")
-                processWeightRequest()
-            } catch (e: Exception) {
-                Log.e(Constants.TAG, "處理重量請求時發生未預期異常", e)
-                sendResult(null, Constants.STATUS_ERROR, "未預期錯誤: ${e.message}")
-            }
-        }.start()
-    }
-
-    /**
-     * 處理重量請求的核心邏輯
-     */
-    private fun processWeightRequest() {
-        // Step 1: 檢查是否有 USB 設備
-        val drivers = weightRepository.findAllDrivers()
-        if (drivers.isEmpty()) {
-            Log.w(Constants.TAG, "找不到任何 USB Serial 設備")
-            sendResult(null, Constants.STATUS_NO_DEVICE, "找不到任何 USB Serial 設備")
-            return
-        }
-
-        // Step 2: 檢查權限，必要時請求
-        val deviceNeedingPermission = weightRepository.getFirstDeviceNeedingPermission()
-        if (deviceNeedingPermission != null) {
-            Log.i(Constants.TAG, "需要請求 USB 權限")
-            
-            val permissionGranted = requestUsbPermission(deviceNeedingPermission)
-            if (!permissionGranted) {
-                Log.w(Constants.TAG, "USB 權限被拒絕")
-                sendResult(null, Constants.STATUS_NO_PERMISSION, "USB 權限被拒絕")
-                return
-            }
-            
-            Log.i(Constants.TAG, "USB 權限已授予")
-        }
-
-        // Step 3: 讀取重量
-        val result = weightRepository.readWeight()
-        Log.i(Constants.TAG, "重量讀取結果: status=${result.status}, weight=${result.weight}")
-
-        // Step 4: 發送結果
-        sendResult(result.weight, result.status, result.message)
-    }
-
-    /**
-     * 請求 USB 權限
-     * @return true 如果權限被授予，false 如果被拒絕或超時
-     */
-    private fun requestUsbPermission(device: UsbDevice): Boolean {
-        Log.i(Constants.TAG, "請求 USB 權限: VID=0x${String.format("%04X", device.vendorId)}")
-
-        // 重置狀態
-        permissionGranted = false
-        permissionLatch = CountDownLatch(1)
-
-        // 設置權限回調
-        UsbPermissionReceiver.setCallback(object : UsbPermissionReceiver.PermissionCallback {
-            override fun onPermissionResult(device: UsbDevice?, granted: Boolean) {
-                Log.d(Constants.TAG, "權限回調: granted=$granted")
-                permissionGranted = granted
-                permissionLatch?.countDown()
-            }
-        })
-
-        try {
-            // 創建 PendingIntent
-            val permissionIntent = Intent(Constants.ACTION_USB_PERMISSION)
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
-            val pendingIntent = PendingIntent.getBroadcast(this, 0, permissionIntent, flags)
-
-            // 請求權限
-            usbManager.requestPermission(device, pendingIntent)
-            Log.d(Constants.TAG, "USB 權限請求已發送")
-
-            // 等待權限結果（最多等待 30 秒）
-            val received = permissionLatch?.await(30, TimeUnit.SECONDS) ?: false
-            
-            if (!received) {
-                Log.w(Constants.TAG, "等待 USB 權限超時")
-                return false
-            }
-
-            return permissionGranted
-
-        } catch (e: Exception) {
-            Log.e(Constants.TAG, "請求 USB 權限時發生異常", e)
-            return false
-        } finally {
-            // 清理
-            UsbPermissionReceiver.setCallback(null)
-            permissionLatch = null
-        }
-    }
-
-    /**
-     * 發送結果 Broadcast
-     */
-    private fun sendResult(weight: String?, status: String, message: String) {
-        Log.i(Constants.TAG, "發送結果: status=$status, weight=$weight, message=$message")
-
-        val resultIntent = Intent(Constants.ACTION_WEIGHT_RESULT).apply {
-            if (weight != null) {
-                putExtra(Constants.EXTRA_WEIGHT, weight)
-            }
-            putExtra(Constants.EXTRA_STATUS, status)
-            putExtra(Constants.EXTRA_MESSAGE, message)
-        }
-
-        sendBroadcast(resultIntent)
-        Log.d(Constants.TAG, "結果 Broadcast 已發送")
-    }
 }
-

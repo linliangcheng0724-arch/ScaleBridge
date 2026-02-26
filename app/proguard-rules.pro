@@ -11,3 +11,4 @@
 # Keep BroadcastReceiver classes
 -keep class com.example.scalebridge.** { *; }
 
+

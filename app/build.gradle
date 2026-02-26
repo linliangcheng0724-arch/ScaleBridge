@@ -3,6 +3,13 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// 讀取簽名配置
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace 'com.example.scalebridge'
     compileSdk 33
@@ -17,10 +24,29 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                // 支援從 app 目錄或根目錄讀取 keystore
+                def ksFile = file(keystoreProperties['storeFile'])
+                if (!ksFile.exists()) {
+                    ksFile = file("${projectDir}/${keystoreProperties['storeFile']}")
+                }
+                storeFile ksFile
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
@@ -44,13 +70,17 @@ dependencies {
     // AndroidX Core
     implementation 'androidx.core:core-ktx:1.10.1'
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.cardview:cardview:1.0.0'
+    implementation 'com.google.android.material:material:1.9.0'
 
     // USB Serial Library
     implementation 'com.github.mik3y:usb-serial-for-android:3.5.1'
+
+    // HTTP Server (for POS integration)
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
 
     // Testing
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
-
